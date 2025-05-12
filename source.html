@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paint Snake</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #111;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            display: block;
+            max-width: 100%;
+            max-height: 100vh;
+        }
+        #instructions {
+            position: absolute;
+            color: white;
+            text-align: center;
+            width: 100%;
+            bottom: 20px;
+            opacity: 0.7;
+            font-size: 14px;
+        }
+    </style>
+
+<base target="_self">
+
+
+    <div id="instructions">Use arrow keys or WASD to move. Eat pellets to grow.</div>
+    <script>
+        let snake;
+        let pellets = [];
+        let splatters = [];
+        let gridSize = 20;
+        let cellSize;
+        let score = 0;
+        let gameState = 'start';
+        let bgGraphics;
+        let colorPalette = [
+            [255, 50, 50],
+            [50, 255, 50],
+            [50, 50, 255],
+            [255, 255, 50],
+            [255, 50, 255],
+            [50, 255, 255]
+        ];
+        let lastUpdateTime = 0;
+        let updateInterval = 100;
+
+        function setup() {
+            createCanvas(windowWidth, windowHeight);
+            cellSize = min(width, height) / gridSize;
+            
+            bgGraphics = createGraphics(width, height);
+            bgGraphics.background(20);
+            
+            resetGame();
+            frameRate(60);
+        }
+
+        function resetGame() {
+            snake = {
+                body: [
+                    {x: 5, y: 10},
+                    {x: 4, y: 10},
+                    {x: 3, y: 10}
+                ],
+                direction: {x: 1, y: 0},
+                nextDirection: {x: 1, y: 0},
+                color: colorPalette[floor(random(colorPalette.length))],
+                glow: 0,
+                glowDirection: 1
+            };
+            
+            pellets = [];
+            splatters = [];
+            score = 0;
+            
+            for (let i = 0; i < 5; i++) {
+                spawnPellet();
+            }
+        }
+
+        function spawnPellet() {
+            let validPos = false;
+            let x, y;
+            
+            while (!validPos) {
+                x = floor(random(gridSize));
+                y = floor(random(gridSize));
+                
+                validPos = true;
+                
+                // Check snake collision
+                for (let segment of snake.body) {
+                    if (segment.x === x && segment.y === y) {
+                        validPos = false;
+                        break;
+                    }
+                }
+                
+                // Check pellet collision
+                for (let pellet of pellets) {
+                    if (pellet.x === x && pellet.y === y) {
+                        validPos = false;
+                        break;
+                    }
+                }
+            }
+            
+            pellets.push({
+                x: x,
+                y: y,
+                color: colorPalette[floor(random(colorPalette.length))],
+                size: cellSize * 0.4,
+                ripple: 0
+            });
+        }
+
+        function windowResized() {
+            resizeCanvas(windowWidth, windowHeight);
+            cellSize = min(width, height) / gridSize;
+            bgGraphics = createGraphics(width, height);
+            bgGraphics.background(20);
+        }
+
+        function draw() {
+            background(20);
+            image(bgGraphics, 0, 0);
+            
+            // Update game state
+            let currentTime = millis();
+            if (gameState === 'play' && currentTime - lastUpdateTime > updateInterval) {
+                updateGame();
+                lastUpdateTime = currentTime;
+            }
+            
+            // Draw pellets
+            for (let pellet of pellets) {
+                drawPellet(pellet);
+            }
+            
+            // Draw snake
+            drawSnake();
+            
+            // Draw splatters
+            for (let splatter of splatters) {
+                drawSplatter(splatter);
+            }
+            
+            // Draw UI
+            drawUI();
+            
+            // Update background
+            updateBackground();
+        }
+
+        function updateGame() {
+            // Update snake direction
+            snake.direction = {x: snake.nextDirection.x, y: snake.nextDirection.y};
+            
+            // snake
+            let head = {x: snake.body[0].x + snake.direction.x, y: snake.body[0].y + snake.direction.y};
+            
+            // Wrap around edges
+            if (head.x < 0) head.x = gridSize - 1;
+            if (head.x >= gridSize) head.x = 0;
+            if (head.y < 0) head.y = gridSize - 1;
+            if (head.y >= gridSize) head.y = 0;
+            
+            // Check self collision
+            for (let i = 0; i < snake.body.length; i++) {
+                if (head.x === snake.body[i].x && head.y === snake.body[i].y) {
+                    gameState = 'gameover';
+                    return;
+                }
+            }
+            
+            snake.body.unshift(head);
+            
+            // Check pellet collision
+            let pelletEaten = false;
+            for (let i = pellets.length - 1; i >= 0; i--) {
+                let pellet = pellets[i];
+                if (head.x === pellet.x && head.y === pellet.y) {
+                    // Create splatter
+                    createSplatter(head.x, head.y, pellet.color);
+                    
+                    // Change snake color
+                    snake.color = pellet.color;
+                    
+                    // Remove pellet
+                    pellets.splice(i, 1);
+                    pelletEaten = true;
+                    score++;
+                    
+                    // Spawn new pellet
+                    spawnPellet();
+                    break;
+                }
+            }
+            
+            // If no pellet eaten, remove tail
+            if (!pelletEaten) {
+                snake.body.pop();
+            }
+            
+            // Update snake glow
+            snake.glow += snake.glowDirection * 0.05;
+            if (snake.glow > 1 || snake.glow < 0) {
+                snake.glowDirection *= -1;
+            }
+        }
+
+        function drawPellet(pellet) {
+            let px = pellet.x * cellSize + cellSize / 2;
+            let py = pellet.y * cellSize + cellSize / 2;
+            
+            pellet.ripple = (pellet.ripple + 0.05) % TWO_PI;
+            let rippleSize = sin(pellet.ripple) * 2 + 2;
+            
+            push();
+            translate(px, py);
+            
+            // Glow effect
+            drawingContext.shadowBlur = 15;
+            drawingContext.shadowColor = color(pellet.color[0], pellet.color[1], pellet.color[2], 150);
+            
+            fill(pellet.color);
+            noStroke();
+            ellipse(0, 0, pellet.size + rippleSize, pellet.size + rippleSize);
+            
+            drawingContext.shadowBlur = 0;
+            pop();
+        }
+
+        function drawSnake() {
+            for (let i = 0; i < snake.body.length; i++) {
+                let segment = snake.body[i];
+                let sx = segment.x * cellSize + cellSize / 2;
+                let sy = segment.y * cellSize + cellSize / 2;
+                
+                push();
+                translate(sx, sy);
+                
+                // Body segment
+                let segmentSize = cellSize * 0.8;
+                if (i === 0) segmentSize = cellSize * 0.9; // Head is bigger
+                
+                // Glow effect
+                let glowAlpha = map(snake.glow, 0, 1, 100, 200);
+                drawingContext.shadowBlur = 15 * snake.glow;
+                drawingContext.shadowColor = color(snake.color[0], snake.color[1], snake.color[2], glowAlpha);
+                
+                fill(snake.color);
+                noStroke();
+                ellipse(0, 0, segmentSize, segmentSize);
+                
+                // Eyes on head
+                if (i === 0) {
+                    fill(255);
+                    let eyeOffset = segmentSize * 0.2;
+                    let eyeSize = segmentSize * 0.15;
+                    
+                    // Eyes look in direction of movement
+                    let eyeX = snake.direction.x * eyeOffset * 0.5;
+                    let eyeY = snake.direction.y * eyeOffset * 0.5;
+                    
+                    ellipse(-eyeOffset + eyeX, -eyeOffset + eyeY, eyeSize, eyeSize);
+                    ellipse(eyeOffset + eyeX, -eyeOffset + eyeY, eyeSize, eyeSize);
+                    
+                    fill(0);
+                    ellipse(-eyeOffset + eyeX, -eyeOffset + eyeY, eyeSize * 0.5, eyeSize * 0.5);
+                    ellipse(eyeOffset + eyeX, -eyeOffset + eyeY, eyeSize * 0.5, eyeSize * 0.5);
+                }
+                
+                drawingContext.shadowBlur = 0;
+                pop();
+            }
+        }
+
+        function createSplatter(x, y, color) {
+            let centerX = x * cellSize + cellSize / 2;
+            let centerY = y * cellSize + cellSize / 2;
+            
+            // Add to background
+            bgGraphics.noStroke();
+            bgGraphics.fill(color[0], color[1], color[2], 50);
+            bgGraphics.ellipse(centerX, centerY, cellSize * 2, cellSize * 2);
+            
+            // Create particles
+            let particleCount = 10 + floor(random(10));
+            for (let i = 0; i < particleCount; i++) {
+                let angle = random(TWO_PI);
+                let speed = random(1, 3);
+                let size = random(5, 15);
+                let life = 30 + random(20);
+                
+                splatters.push({
+                    x: centerX,
+                    y: centerY,
+                    vx: cos(angle) * speed,
+                    vy: sin(angle) * speed,
+                    size: size,
+                    maxSize: size,
+                    color: color,
+                    life: life,
+                    maxLife: life,
+                    rotation: random(TWO_PI),
+                    rotationSpeed: random(-0.1, 0.1)
+                });
+            }
+        }
+
+        function drawSplatter(splatter) {
+            push();
+            translate(splatter.x, splatter.y);
+            rotate(splatter.rotation);
+            
+            let progress = 1 - (splatter.life / splatter.maxLife);
+            let currentSize = splatter.size * (1 + progress * 0.5);
+            let alpha = 255 * (1 - progress * 0.8);
+            
+            fill(splatter.color[0], splatter.color[1], splatter.color[2], alpha);
+            noStroke();
+            
+            // Organic splatter shape
+            beginShape();
+            for (let i = 0; i < 10; i++) {
+                let angle = TWO_PI * i / 10;
+                let radius = currentSize * (0.7 + random(0.3));
+                let x = cos(angle) * radius;
+                let y = sin(angle) * radius;
+                vertex(x, y);
+            }
+            endShape(CLOSE);
+            
+            pop();
+            
+            // Update splatter
+            splatter.x += splatter.vx;
+            splatter.y += splatter.vy;
+            splatter.life--;
+            splatter.rotation += splatter.rotationSpeed;
+            
+            // Gravity
+            splatter.vy += 0.1;
+        }
+
+        function updateBackground() {
+            // Fade out old splatters
+            for (let i = splatters.length - 1; i >= 0; i--) {
+                if (splatters[i].life <= 0) {
+                    splatters.splice(i, 1);
+                }
+            }
+            
+            // Add subtle noise to background
+            bgGraphics.loadPixels();
+            for (let i = 0; i < bgGraphics.pixels.length; i += 4) {
+                if (random() < 0.01) {
+                    let brightness = random(10, 30);
+                    bgGraphics.pixels[i] = brightness;
+                    bgGraphics.pixels[i+1] = brightness;
+                    bgGraphics.pixels[i+2] = brightness;
+                }
+            }
+            bgGraphics.updatePixels();
+        }
+
+        function drawUI() {
+            // Score
+            fill(255);
+            noStroke();
+            textSize(24);
+            textAlign(LEFT, TOP);
+            text("Score: " + score, 20, 20);
+            
+            // Game states
+            if (gameState === 'start') {
+                fill(255, 255, 255, 200);
+                textSize(32);
+                textAlign(CENTER, CENTER);
+                text("PAINT SNAKE", width/2, height/2 - 40);
+                textSize(20);
+                text("Press SPACE to start", width/2, height/2 + 20);
+            } else if (gameState === 'gameover') {
+                fill(255, 100, 100, 200);
+                textSize(32);
+                textAlign(CENTER, CENTER);
+                text("GAME OVER", width/2, height/2 - 40);
+                textSize(20);
+                text("Score: " + score, width/2, height/2);
+                text("Press SPACE to restart", width/2, height/2 + 40);
+            } else if (gameState === 'pause') {
+                fill(255, 255, 255, 200);
+                textSize(32);
+                textAlign(CENTER, CENTER);
+                text("PAUSED", width/2, height/2);
+                textSize(20);
+                text("Press P to resume", width/2, height/2 + 40);
+            }
+        }
+
+        function keyPressed() {
+            // Movement controls
+            if (keyCode === UP_ARROW || key === 'w' || key === 'W') {
+                if (snake.direction.y === 0) snake.nextDirection = {x: 0, y: -1};
+            } else if (keyCode === DOWN_ARROW || key === 's' || key === 'S') {
+                if (snake.direction.y === 0) snake.nextDirection = {x: 0, y: 1};
+            } else if (keyCode === LEFT_ARROW || key === 'a' || key === 'A') {
+                if (snake.direction.x === 0) snake.nextDirection = {x: -1, y: 0};
+            } else if (keyCode === RIGHT_ARROW || key === 'd' || key === 'D') {
+                if (snake.direction.x === 0) snake.nextDirection = {x: 1, y: 0};
+            }
+            
+            // Game state controls
+            if (key === ' ' && (gameState === 'start' || gameState === 'gameover')) {
+                resetGame();
+                gameState = 'play';
+            } else if (key === 'p' || key === 'P') {
+                if (gameState === 'play') {
+                    gameState = 'pause';
+                } else if (gameState === 'pause') {
+                    gameState = 'play';
+                }
+            }
+            
+            return false; // Prevent default behavior
+        }
+    </script>
+
+              
+          
+                
+          
+              
